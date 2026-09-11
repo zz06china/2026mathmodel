@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
