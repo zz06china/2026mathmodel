@@ -1,0 +1,6 @@
+Q3 SELECTED MODEL SENSITIVITY
+q_release=0.80,0.70,0.70,0.70
+case=窗口14天,window=14,terminal=fixed,scheduled_cost=13015955.723112,emergency_cost=638932.587142,total_cost=13654888.310254,emergency_kwh=112484.093922,emergency_days=263,end_energy=5882.303202
+case=窗口56天,window=56,terminal=fixed,scheduled_cost=13033221.166944,emergency_cost=641531.845699,total_cost=13674753.012642,emergency_kwh=112668.068616,emergency_days=264,end_energy=5882.303202
+case=终端区间5400-6600 kWh,window=28,terminal=band,scheduled_cost=13019961.041610,emergency_cost=639602.824078,total_cost=13659563.865688,emergency_kwh=112559.150687,emergency_days=263,end_energy=5324.652705
+case=终端偏离软惩罚,window=28,terminal=soft,scheduled_cost=13023703.069911,emergency_cost=639595.196826,total_cost=13663298.266736,emergency_kwh=112555.705946,emergency_days=263,end_energy=5882.303202

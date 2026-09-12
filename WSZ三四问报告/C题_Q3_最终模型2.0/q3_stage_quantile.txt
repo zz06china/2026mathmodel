@@ -1,0 +1,4 @@
+Q3 STAGE-SPECIFIC QUANTILE ANALYSIS
+q0=0.80,q_adjust=0.65,scheduled_cost=13011720.809012,emergency_cost=657285.560122,total_cost=13669006.369135,emergency_kwh=116040.729188,emergency_days=264,end_energy=5882.303202,max_balance_residual=2.27373675443e-13,max_storage_residual=9.09494701773e-13
+q0=0.80,q_adjust=0.70,scheduled_cost=13023742.862300,emergency_cost=639592.683179,total_cost=13663335.545479,emergency_kwh=112555.179317,emergency_days=263,end_energy=5882.303202,max_balance_residual=2.27373675443e-13,max_storage_residual=9.09494701773e-13
+q0=0.80,q_adjust=0.75,scheduled_cost=13040957.021873,emergency_cost=624405.057677,total_cost=13665362.079550,emergency_kwh=109594.942031,emergency_days=260,end_energy=5882.303202,max_balance_residual=2.27373675443e-13,max_storage_residual=9.09494701773e-13
