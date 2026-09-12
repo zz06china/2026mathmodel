@@ -154,11 +154,13 @@ def residual_margin(residual_history, window=28, q=0.80):
     return np.quantile(sample, q, axis=0)
 
 
-def hourly_forecast_to_10min(hourly, issue_hour):
+def hourly_forecast_to_10min(hourly, issue_hour, anchor=0.0):
     """把24个整点预报值插值到144个10分钟时段。
 
     hourly[k] = 光伏在 (issue_hour + k + 1) 点的预报值，k=0..23。
-    当前小时（issue_hour）用 hourly[0] 作为近似；更早的时段置 0。
+    发布时刻（issue_hour）用发布前最后一个实际光伏值 anchor 作零时刻锚点
+    （单位同 marker，kWh/10min），避免当前小时借下一整点预报造成水平段；
+    更早的时段置 0。
     """
     marker = np.zeros(25)  # marker[h] = 小时 h 的光伏能量（kWh/10min = kW * DT）
     for h in range(1, 25):
@@ -166,7 +168,7 @@ def hourly_forecast_to_10min(hourly, issue_hour):
         if 1 <= off <= 24:
             marker[h] = hourly[off - 1] * DT
     if issue_hour > 0:
-        marker[issue_hour] = hourly[0] * DT
+        marker[issue_hour] = anchor
     minutes = (np.arange(N) * 10 + 5) / 60.0  # 每时段中点在“小时”单位的坐标
     return np.interp(minutes, np.arange(25), marker)
 
@@ -331,14 +333,14 @@ def write_output(dates, prices, results):
         ws.cell(row, 146, round(float(np.sum(r["buy"])), 4))
         ws.cell(row, 147, round(float(np.dot(prices, r["buy"])), 4))
 
-    # 调整购电量：A_t；最后两列 全天调整购电量 / 调整购电量相关费用
+    # 调整购电量：A_t；最后两列 全天调整购电量 / 全天购电费（调整后正常购电费）
     ws = wb["调整购电量"]
     for i, r in enumerate(results):
         row = i + 2
         for t, v in enumerate(source_order(r["adjusted"]), start=2):
             ws.cell(row, t, round(float(v), 4))
         ws.cell(row, 146, round(float(np.sum(r["adjusted"])), 4))
-        ws.cell(row, 147, round(float(r["adjust_cost"]), 4))
+        ws.cell(row, 147, round(float(r["plan_cost"] + r["adjust_cost"]), 4))
 
     # 充放电量 + 储电量
     ws = wb["充放电量"]
@@ -416,7 +418,8 @@ def run_model(adjust_issues):
         load0 = load_forecast_10min(loads, day, prior_load)
         pv = {0: hourly_forecast_to_10min(forecasts[day, 0], 0)}
         for h in adjust_issues:
-            pv[h] = hourly_forecast_to_10min(forecasts[day, h // 6], h)
+            anchor = pvs[day][h * 6 - 1]  # 发布前最后一个实际光伏值（kWh/10min）
+            pv[h] = hourly_forecast_to_10min(forecasts[day, h // 6], h, anchor)
         margin = residual_margin(residuals)
 
         # 0:00 计划
