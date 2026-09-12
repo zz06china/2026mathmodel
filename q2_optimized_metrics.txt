@@ -1,0 +1,26 @@
+Q2 FINAL MODEL METRICS
+january_calibration_cost=2298305.1778 yuan
+january_plan_cost=2104434.6242 yuan
+january_emergency_cost=193870.5536 yuan
+report_days=334
+adaptive_load: MAE=29.4660 kWh, RMSE=40.7144 kWh, WMAPE=3.83%
+persistence_load: MAE=108.3367 kWh, RMSE=188.0652 kWh, WMAPE=14.08%
+adaptive_pv: MAE=28.4676 kWh, RMSE=57.1697 kWh, WMAPE=7.18%
+persistence_pv: MAE=30.8911 kWh, RMSE=62.5291 kWh, WMAPE=7.79%
+planned_purchase=21963546.7098 kWh
+emergency_purchase=110213.6503 kWh
+surplus_energy=2935687.7716 kWh
+planned_cost=13460292.3327 yuan
+emergency_cost=658979.2042 yuan
+total_cost=14119271.5369 yuan
+fixed_schedule_emergency=386537.2032 kWh
+fixed_schedule_emergency_cost=1494926.7683 yuan
+fixed_schedule_total_cost=14955219.1010 yuan
+emergency_days=108/334
+ending_energy=8851.0667 kWh
+simultaneous_charge_discharge_slots=0
+max_balance_residual=4.5474735e-13
+max_storage_residual=9.094947e-13
+global_min_energy=1200.0000 kWh
+global_max_energy=10800.0000 kWh
+output=D:\mathtest\C题_Q2_最终模型\result2_optimized.xlsx
