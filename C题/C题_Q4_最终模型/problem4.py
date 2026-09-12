@@ -34,6 +34,8 @@ OUTPUT4_2 = Path(__file__).resolve().parent / "result4-2.xlsx"
 OUTPUT4_3 = Path(__file__).resolve().parent / "result4-3.xlsx"
 SUMMARY4_2 = Path(__file__).resolve().parent / "q4_2_metrics.txt"
 SUMMARY4_3 = Path(__file__).resolve().parent / "q4_3_metrics.txt"
+SUMMARY4_ABLATION = Path(__file__).resolve().parent / "q4_ablation.txt"
+SUMMARY4_ANALYSIS = Path(__file__).resolve().parent / "q4_analysis.txt"
 
 DT = 1.0 / 6.0
 N = 144
@@ -216,42 +218,13 @@ def _finish_two_stage(model, cost, smoothing_vars):
         raise RuntimeError(f"第二阶段求解失败: {pulp.LpStatus[status]}")
 
 
-def solve_horizon(net_targets, price_list, e_start, terminal_target=E_INITIAL):
-    """问题2式滚动计划：horizon 天（各 144 时段），price_list 为每天电价."""
-    horizon = len(net_targets)
-    total_slots = horizon * N
-    model = pulp.LpProblem("Q4_rolling_plan", pulp.LpMinimize)
-    buy = pulp.LpVariable.dicts("buy", range(total_slots), lowBound=0)
-    charge = pulp.LpVariable.dicts("charge", range(total_slots), 0, Q_MAX)
-    discharge = pulp.LpVariable.dicts("discharge", range(total_slots), 0, Q_MAX)
-    surplus = pulp.LpVariable.dicts("surplus", range(total_slots), lowBound=0)
-    energy = pulp.LpVariable.dicts("energy", range(total_slots + 1), E_MIN, E_MAX)
-    model += energy[0] == e_start
-    model += energy[total_slots] == terminal_target
-
-    for j in range(horizon):
-        for t in range(N):
-            k = j * N + t
-            model += buy[k] + discharge[k] == float(net_targets[j][t]) + charge[k] + surplus[k]
-            model += energy[k + 1] == energy[k] + ETA_C * charge[k] - discharge[k] / ETA_D
-
-    cost = pulp.lpSum(
-        price_list[j][t] * buy[j * N + t] for j in range(horizon) for t in range(N)
-    )
-    _finish_two_stage(model, cost, [charge[k] + discharge[k] + surplus[k] for k in range(total_slots)])
-
-    first = range(N)
-    return {
-        "buy": np.array([pulp.value(buy[t]) for t in first]),
-        "charge": np.array([pulp.value(charge[t]) for t in first]),
-        "discharge": np.array([pulp.value(discharge[t]) for t in first]),
-        "planned_surplus": np.array([pulp.value(surplus[t]) for t in first]),
-        "energy": np.array([pulp.value(energy[t]) for t in range(N + 1)]),
-    }
-
-
 def solve_dayahead(net_targets, prices, e_start, terminal=E_INITIAL):
-    """0:00 日前计划：min Σ p B，得到计划购电量 B_t（144时段）."""
+    """0:00 日前计划：min Σ p B，得到计划购电量 B_t（144时段）.
+
+    单日优化（不做跨日价格假设），终端 SOC 设为 terminal（默认 6000 日内循环）。
+    波动电价下不做 48h 前瞻：次日完整电价在当天 0:00 并不可知，复制当日价格会
+    产生错误的跨日储能决策，故改用终端 SOC 目标抑制预测末端过度放电。
+    """
     model = pulp.LpProblem("Q4_dayahead", pulp.LpMinimize)
     buy = pulp.LpVariable.dicts("buy", range(N), lowBound=0)
     charge = pulp.LpVariable.dicts("charge", range(N), 0, Q_MAX)
@@ -556,14 +529,9 @@ def run_q2(prices4):
         pv0, _ = point_forecast(pvs, day, 0, prior_pv)
         net0 = load0 - pv0
         margin = residual_margin(residuals)
-        targets = [net0 + margin]
 
-        # 48h 前瞻：第二天价格沿用当天（避免年末放电，也不引入次日价格信息）
-        load1, _ = point_forecast(loads, day, 1, prior_load)
-        pv1, _ = point_forecast(pvs, day, 1, prior_pv)
-        targets.append(load1 - pv1 + margin)
-
-        plan = solve_horizon(targets, [p_t, p_t], e_start)
+        # 单日日前计划（终端 SOC=6000 日内循环），不假设次日电价
+        plan = solve_dayahead(net0 + margin, p_t, e_start)
         actual = execute_causal_day(plan["buy"], loads[day], pvs[day], e_start)
         result = {
             "buy": plan["buy"],
@@ -596,6 +564,12 @@ def run_q2(prices4):
     plan_cost = sum(r["plan_cost"] for r in report)
     emergency_cost = sum(r["emergency_cost"] for r in report)
     total_cost = plan_cost + emergency_cost
+
+    # 无储能基准：不配置储能，每时段按实际净负荷以实时电价购电（弃光）
+    no_storage = sum(
+        float(np.dot(prices4[day], np.maximum(loads[day] - pvs[day], 0.0)))
+        for day in range(REPORT_START, len(dates))
+    )
     metrics = {
         "report_days": len(report),
         "planned_purchase": plan_kwh,
@@ -603,6 +577,7 @@ def run_q2(prices4):
         "planned_cost": plan_cost,
         "emergency_cost": emergency_cost,
         "total_cost": total_cost,
+        "no_storage_baseline": no_storage,
         "emergency_days": sum(np.sum(r["emergency"]) > 0.01 for r in report),
         "ending_energy": float(report[-1]["energy"][-1]),
         "max_balance_residual": max_checks["balance"],
@@ -615,8 +590,11 @@ def run_q2(prices4):
     return metrics
 
 
-def run_q3(prices4, adjust_issues=(6, 12, 18)):
-    """在时变电价下重算问题3：0/6/12/18 滚动 MPC + 调整购电计价."""
+def run_q3(prices4, adjust_issues=(6, 12, 18), write=True):
+    """在时变电价下重算问题3：0/6/12/18 滚动 MPC + 调整购电计价.
+
+    write=False 时只返回指标、不写结果文件（供调整时刻消融实验复用）。
+    """
     _, prior_load, prior_pv, dates, loads, pvs = load_inputs()
     forecasts = load_forecasts()
     adjust_issues = sorted(adjust_issues)
@@ -733,7 +711,31 @@ def run_q3(prices4, adjust_issues=(6, 12, 18)):
         "global_max_energy": max_checks["max_energy"],
         "simultaneous": sum(int(np.sum((r["charge"] > TOL) & (r["discharge"] > TOL))) for r in report),
     }
-    write_output_4_3(report_dates, report)
+
+    # 价格响应统计（充/放电加权平均电价、净放电与电价相关性）
+    c_sum = d_sum = pc_sum = pd_sum = 0.0
+    p_all, nd_all = [], []
+    for i, r in enumerate(report):
+        p = prices4[REPORT_START + i]
+        c = r["charge"]
+        d = r["discharge"]
+        c_sum += float(np.sum(c))
+        d_sum += float(np.sum(d))
+        pc_sum += float(np.dot(p, c))
+        pd_sum += float(np.dot(p, d))
+        p_all.append(p)
+        nd_all.append(d - c)
+    p_all = np.concatenate(p_all)
+    nd_all = np.concatenate(nd_all)
+    metrics["charge_kwh"] = c_sum
+    metrics["discharge_kwh"] = d_sum
+    metrics["avg_charge_price"] = pc_sum / c_sum if c_sum > 0 else 0.0
+    metrics["avg_discharge_price"] = pd_sum / d_sum if d_sum > 0 else 0.0
+    metrics["discharge_over_charge"] = (pd_sum / d_sum) / (pc_sum / c_sum) if (c_sum > 0 and d_sum > 0) else 0.0
+    metrics["price_net_discharge_corr"] = float(np.corrcoef(p_all, nd_all)[0, 1]) if len(p_all) > 1 else 0.0
+
+    if write:
+        write_output_4_3(report_dates, report)
     return metrics
 
 
@@ -766,12 +768,70 @@ def _fmt_metrics(tag, m):
         f"global_max_energy={m['global_max_energy']:.4f} kWh",
         f"simultaneous={m['simultaneous']}",
     ]
+    if "no_storage_baseline" in m:
+        lines.append(f"no_storage_baseline={m['no_storage_baseline']:.4f} yuan")
+    if "avg_charge_price" in m:
+        lines += [
+            f"charge_kwh={m['charge_kwh']:.4f} kWh",
+            f"discharge_kwh={m['discharge_kwh']:.4f} kWh",
+            f"avg_charge_price={m['avg_charge_price']:.4f} yuan/kWh",
+            f"avg_discharge_price={m['avg_discharge_price']:.4f} yuan/kWh",
+            f"discharge_over_charge={m['discharge_over_charge']:.4f}",
+            f"price_net_discharge_corr={m['price_net_discharge_corr']:.4f}",
+        ]
     return "\n".join(lines)
+
+
+def price_features(prices4, loads, pvs):
+    """附件4 价格特征 + 价-需相关性（净负荷与日均价）。"""
+    daily_avg = prices4.mean(axis=1)
+    daily_peak = prices4.max(axis=1)
+    daily_valley = prices4.min(axis=1)
+    peak_valley_ratio = daily_peak / daily_valley
+    daily_net = (loads - pvs).sum(axis=1)
+    r = float(np.corrcoef(daily_net, daily_avg)[0, 1])
+    order = np.argsort(daily_avg)
+    half = len(order) // 2
+    low, high = order[:half], order[half:]
+    return {
+        "mean_price": float(prices4.mean()),
+        "daily_avg_min": float(daily_avg.min()),
+        "daily_avg_max": float(daily_avg.max()),
+        "median_peak_valley": float(np.median(peak_valley_ratio)),
+        "days_exceed_threshold": int(np.sum(peak_valley_ratio > 1.0 / (ETA_C * ETA_D))),
+        "price_netload_corr": r,
+        "low_price_netload": float(daily_net[low].mean()),
+        "high_price_netload": float(daily_net[high].mean()),
+        "low_price_avg": float(daily_avg[low].mean()),
+        "high_price_avg": float(daily_avg[high].mean()),
+    }
+
+
+def run_ablation(prices4):
+    """调整时刻消融：不同 adjust_issues 组合的指标对比（只算指标、不写输出）。"""
+    cases = [
+        ("不调整(仅0:00)", ()),
+        ("仅6:00", (6,)),
+        ("仅12:00", (12,)),
+        ("仅18:00", (18,)),
+        ("6/12/18", (6, 12, 18)),
+    ]
+    header = (f"{'调整方案':<16}{'计划购电费':>14}{'调整费':>12}"
+              f"{'紧急购电费':>13}{'总费用':>14}{'紧急购电量':>14}")
+    rows = [header]
+    for name, issues in cases:
+        m = run_q3(prices4, adjust_issues=issues, write=False)
+        rows.append(
+            f"{name:<16}{m['planned_cost']:>14.2f}{m['adjust_cost']:>12.2f}"
+            f"{m['emergency_cost']:>13.2f}{m['total_cost']:>14.2f}{m['emergency_purchase']:>14.2f}"
+        )
+    return "\n".join(rows)
 
 
 def main():
     prices4 = load_prices4()
-    print("加载附件4波动电价：shape =", prices4.shape, "| 日均价区间 [%.3f, %.3f] 元/kWh" % (prices4.mean(axis=1).min(), prices4.mean(axis=1).max()))
+    print("加载附件4波动电价：shape =", prices4.shape,
+          "| 日均价区间 [%.3f, %.3f] 元/kWh" % (prices4.mean(axis=1).min(), prices4.mean(axis=1).max()))
 
     m2 = run_q2(prices4)
     print("\n" + _fmt_metrics("Q4-2", m2))
@@ -783,8 +843,40 @@ def main():
     print("output=%s" % OUTPUT4_3)
     SUMMARY4_3.write_text(_fmt_metrics("Q4-3", m3) + "\noutput=%s\n" % OUTPUT4_3, encoding="utf-8")
 
-    print("\n=== 固定电价(问题3) vs 波动电价(4-3) ===")
-    print(f"固定电价 total = 13,727,335 元   vs   波动电价 total = {m3['total_cost']:.0f} 元")
+    # 调整时刻消融实验
+    print("\n=== 调整时刻消融实验（波动电价） ===")
+    ablation = run_ablation(prices4)
+    print(ablation)
+    SUMMARY4_ABLATION.write_text(ablation + "\n", encoding="utf-8")
+
+    # 价格特征 + 价格响应 + 储能价值汇总
+    _, _, _, _, loads, pvs = load_inputs()
+    feat = price_features(prices4, loads, pvs)
+    analysis = [
+        "Q4 分析汇总（波动电价）",
+        "",
+        "--- 价格特征 ---",
+        f"附件4 均价 = {feat['mean_price']:.4f} 元/kWh（附件1 固定电价 0.7662 元/kWh）",
+        f"日均价区间 = [{feat['daily_avg_min']:.4f}, {feat['daily_avg_max']:.4f}] 元/kWh",
+        f"日内峰谷比中位数 = {feat['median_peak_valley']:.4f}（套利阈值 1/0.81 = {1.0/(ETA_C*ETA_D):.4f}）",
+        f"超过套利阈值天数 = {feat['days_exceed_threshold']}/365",
+        f"每日净负荷 vs 每日均价 相关系数 r = {feat['price_netload_corr']:.4f}",
+        f"低价日净负荷 = {feat['low_price_netload']:.0f} kWh（均价 {feat['low_price_avg']:.3f} 元/kWh）",
+        f"高价日净负荷 = {feat['high_price_netload']:.0f} kWh（均价 {feat['high_price_avg']:.3f} 元/kWh）",
+        "",
+        "--- 价格响应（Q4-3） ---",
+        f"充电加权平均电价 = {m3['avg_charge_price']:.4f} 元/kWh",
+        f"放电加权平均电价 = {m3['avg_discharge_price']:.4f} 元/kWh",
+        f"放电/充电电价比 = {m3['discharge_over_charge']:.4f}（>1 表明低价充、高价放）",
+        f"电价与净放电(D-C)相关系数 = {m3['price_net_discharge_corr']:.4f}",
+        "",
+        "--- 储能价值 ---",
+        f"无储能基准（实时电价按实际净负荷购电） = {m2['no_storage_baseline']:.2f} 元",
+        f"Q4-2 相对无储能基准净节省 = {m2['no_storage_baseline'] - m2['total_cost']:.2f} 元",
+        f"Q4-3 相对无储能基准净节省 = {m2['no_storage_baseline'] - m3['total_cost']:.2f} 元",
+    ]
+    print("\n" + "\n".join(analysis))
+    SUMMARY4_ANALYSIS.write_text("\n".join(analysis) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

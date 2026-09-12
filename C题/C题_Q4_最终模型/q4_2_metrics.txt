@@ -1,15 +1,16 @@
 Q4-2 MODEL METRICS (波动电价)
 report_days=334
-planned_purchase=21936344.4876 kWh
-emergency_purchase=116343.5508 kWh
-planned_cost=14020796.9010 yuan
-emergency_cost=729471.2367 yuan
-total_cost=14750268.1377 yuan
-emergency_days=108/334
-ending_energy=6729.7235 kWh
+planned_purchase=22019374.1266 kWh
+emergency_purchase=110596.0940 kWh
+planned_cost=14073613.6914 yuan
+emergency_cost=717916.0544 yuan
+total_cost=14791529.7458 yuan
+emergency_days=106/334
+ending_energy=6429.7235 kWh
 max_balance_residual=4.5474735e-13
 max_storage_residual=9.094947e-13
 global_min_energy=1200.0000 kWh
 global_max_energy=10800.0000 kWh
 simultaneous=0
+no_storage_baseline=17026782.8581 yuan
 output=D:\Pythonzzz\agent for math model\C题\C题_Q4_最终模型\result4-2.xlsx
