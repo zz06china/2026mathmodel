@@ -1,0 +1,27 @@
+Q3 SENSITIVITY ANALYSIS
+All cases use causal four-release robust MPC on 2025-02-01 to 2025-12-31.
+
+[quantile]
+q=0.70,scheduled_cost=12977347.498099,emergency_cost=644526.907785,total_cost=13621874.405884,emergency_kwh=113610.672235,emergency_days=266
+q=0.75,scheduled_cost=13014827.771213,emergency_cost=625806.809899,total_cost=13640634.581112,emergency_kwh=109903.365522,emergency_days=261
+q=0.80,scheduled_cost=13065916.793642,emergency_cost=609518.773603,total_cost=13675435.567245,emergency_kwh=106690.236023,emergency_days=259
+q=0.85,scheduled_cost=13133379.244986,emergency_cost=593528.085897,total_cost=13726907.330883,emergency_kwh=103549.787023,emergency_days=256
+q=0.90,scheduled_cost=13225559.830061,emergency_cost=576597.287982,total_cost=13802157.118043,emergency_kwh=100257.398819,emergency_days=252
+
+[window]
+window=14,scheduled_cost=13056301.258242,emergency_cost=612671.352568,total_cost=13668972.610810,emergency_kwh=107374.016184,emergency_days=261
+window=28,scheduled_cost=13065916.793642,emergency_cost=609518.773603,total_cost=13675435.567245,emergency_kwh=106690.236023,emergency_days=259
+window=56,scheduled_cost=13080802.437326,emergency_cost=600815.864553,total_cost=13681618.301879,emergency_kwh=104933.361189,emergency_days=259
+
+[terminal]
+policy=固定6000 kWh,scheduled_cost=13065916.793642,emergency_cost=609518.773603,total_cost=13675435.567245,emergency_kwh=106690.236023,emergency_days=259,end_energy=5882.303202
+policy=区间5400-6600 kWh,scheduled_cost=13062143.413357,emergency_cost=609507.334420,total_cost=13671650.747776,emergency_kwh=106692.580302,emergency_days=259,end_energy=5324.652705
+policy=偏离6000 kWh软惩罚,scheduled_cost=13065877.217374,emergency_cost=609518.806357,total_cost=13675396.023731,emergency_kwh=106690.236034,emergency_days=259,end_energy=5882.303202
+
+[baseline]
+quantile=0.80
+window=28
+terminal=fixed_6000
+total_cost=13675435.567245
+max_balance_residual=2.27373675443e-13
+max_storage_residual=9.09494701773e-13

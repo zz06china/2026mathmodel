@@ -1,0 +1,7 @@
+numpy
+openpyxl
+PuLP
+python-docx
+latex2mathml
+lxml
+matplotlib
