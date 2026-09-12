@@ -1,0 +1,10 @@
+Q3 UPDATE-TIME ABLATION
+sorted_by=total_cost
+releases=0+6+12+18,total_cost=13698764.96,emergency_kwh=58551.87
+releases=0+12+18,total_cost=13767254.20,emergency_kwh=66174.37
+releases=0+6+12,total_cost=13892039.58,emergency_kwh=97948.29
+releases=0+6+18,total_cost=13898114.19,emergency_kwh=58523.18
+releases=0+12,total_cost=13954343.22,emergency_kwh=104199.91
+releases=0+18,total_cost=14007636.94,emergency_kwh=66008.15
+releases=0,total_cost=14182945.86,emergency_kwh=101214.74
+releases=0+6,total_cost=14238971.57,emergency_kwh=129087.77
